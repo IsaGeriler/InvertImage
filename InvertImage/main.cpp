@@ -12,6 +12,8 @@
 #include <immintrin.h>
 #include <intrin.h>
 #include <string>
+#include <thread>
+#include <vector>
 
 static void avx_support() {
 	int cpuInfo[4];
@@ -68,7 +70,23 @@ static void avx2_invert(const unsigned char* hImg, unsigned char* hOutImg, int w
 }
 
 static void multithread_invert(const unsigned char* hImg, unsigned char* hOutImg, int width, int height, int channels) {
-	// TO:DO
+	unsigned int numThreads = std::thread::hardware_concurrency();
+	std::vector<std::thread> threads(numThreads);
+
+	size_t totalBytes = width * height * channels;
+	size_t chunkSize = totalBytes / numThreads;  // work per thread
+
+	for (size_t i = 0; i < threads.size(); i++) {
+		size_t startIdx = i * chunkSize;
+		size_t endIdx = (i == threads.size() - 1) ? totalBytes : startIdx + chunkSize;
+		threads[i] = std::thread([=]() {
+			for (size_t j = startIdx; j < endIdx; j++)
+				hOutImg[j] = 255 - hImg[j];
+			});
+	}
+
+	for (auto& t : threads)
+		t.join();
 }
 
 static void multithread_avx2_invert(const unsigned char* hImg, unsigned char* hOutImg, int width, int height, int channels) {
@@ -89,7 +107,7 @@ int main(int argc, char** argv) {
 	int width, height, channels;
 
 	// Load the image
-	unsigned char* hImg = stbi_load(evening.c_str(), &width, &height, &channels, 3);
+	unsigned char* hImg = stbi_load(pexels.c_str(), &width, &height, &channels, 3);
 
 	// Check if the load was successfull
 	if (!hImg) {
@@ -102,17 +120,22 @@ int main(int argc, char** argv) {
 	auto start = std::chrono::high_resolution_clock::now();
 	invert(hImg, hOutImg, width, height, channels);
 	auto end = std::chrono::high_resolution_clock::now();
-	std::cout << "Time taken (no SIMD, no multithreading): " << std::chrono::duration<double, std::milli>(end - start).count()
-			  << "ms.\n";
-	//stbi_write_jpg(inverted_evening.c_str(), width, height, channels, hOutImg, 95);
+	std::cout << "Time taken (No SIMD, No Multithreading): " << std::chrono::duration<double, std::milli>(end - start).count() << "ms.\n";
+	stbi_write_jpg(inverted_pexels.c_str(), width, height, channels, hOutImg, 95);
+
+	// Invert image (Multithreading) and calculate time function with chrono
+	start = std::chrono::high_resolution_clock::now();
+	multithread_invert(hImg, hOutImg, width, height, channels);
+	end = std::chrono::high_resolution_clock::now();
+	std::cout << "Time taken (No SIMD, Multithreading): " << std::chrono::duration<double, std::milli>(end - start).count() << "ms.\n";
+	stbi_write_jpg(inverted_pexels.c_str(), width, height, channels, hOutImg, 95);
 
 	// Invert image (AVX2) and calculate time function with chrono
 	start = std::chrono::high_resolution_clock::now();
 	avx2_invert(hImg, hOutImg, width, height, channels);
 	end = std::chrono::high_resolution_clock::now();
-	std::cout << "Time taken (SIMD, no multithreading): " << std::chrono::duration<double, std::milli>(end - start).count()
-			  << "ms.\n";
-	stbi_write_jpg(inverted_evening.c_str(), width, height, channels, hOutImg, 95);
+	std::cout << "Time taken (SIMD, No Multithreading): " << std::chrono::duration<double, std::milli>(end - start).count() << "ms.\n";
+	stbi_write_jpg(inverted_pexels.c_str(), width, height, channels, hOutImg, 95);
 
 	// Deallocate Memory
 	delete[] hOutImg;

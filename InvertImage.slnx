@@ -3,5 +3,5 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="InvertImage/InvertImage.vcxproj" />
+  <Project Path="InvertImage/InvertImage.vcxproj" Id="3a8242f7-0800-4562-bb48-07f6682d0022" />
 </Solution>
