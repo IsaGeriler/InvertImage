@@ -13,6 +13,19 @@
 #include <intrin.h>
 #include <string>
 
+static void avx_support() {
+	int cpuInfo[4];
+	__cpuid(cpuInfo, 7);
+
+	std::cout << "AVX2 Support: ";
+	if ((cpuInfo[1] & 1 << 5) != 0) std::cout << "Supported!\n";
+	else std::cout << "Not Supported!\n";
+
+	std::cout << "AVX512 Support: ";
+	if ((cpuInfo[1] & 1 << 16) != 0) std::cout << "Supported!\n";
+	else std::cout << "Not Supported!\n";
+}
+
 static void invert(const unsigned char* hImg, unsigned char* hOutImg, int width, int height, int channels) {
 	for (int y = 0; y < height; y++)
 		for (int x = 0; x < width; x++)
@@ -63,6 +76,9 @@ static void multithread_avx2_invert(const unsigned char* hImg, unsigned char* hO
 }
 
 int main(int argc, char** argv) {
+	// Display AVX2/AVX512 Support
+	avx_support();
+
 	// Define the image paths
 	std::string evening{ "resources/evening.jpg" };
 	std::string inverted_evening{ "resources/inverted_evening.jpg" };
@@ -80,7 +96,6 @@ int main(int argc, char** argv) {
 		std::cerr << "Error: Failed to load the image\n";
 		return -1;
 	}
-
 	unsigned char* hOutImg = new unsigned char[width * height * channels];
 
 	// Invert image and calculate time function with chrono
