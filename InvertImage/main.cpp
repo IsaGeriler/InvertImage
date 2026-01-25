@@ -69,8 +69,40 @@ static void avx2_invert(const unsigned char* hImg, unsigned char* hOutImg, int w
 		hOutImg[i] = 255 - hImg[i];
 }
 
+static void avx2_brightness(const unsigned char* hImg, unsigned char* hOutImg, int width, int height, int channels, int delta) {
+	// Fill delta, min and max vectors
+	const __m256i vDelta = _mm256_set1_epi8(static_cast<unsigned char>(delta));
+	const __m256i vMin = _mm256_set1_epi8(static_cast<unsigned char>(0));
+	const __m256i vMax = _mm256_set1_epi8(static_cast<unsigned char>(255));
+
+	// Calculate total bytes
+	size_t totalBytes = width * height * channels;
+	size_t i = 0;
+
+	for (; i + 7 < totalBytes; i += 8) {
+		// Load from hImg at offset i into AVX register v
+		__m256i v = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(hImg + i));
+
+		// Add saturating delta
+		__m256i out = _mm256_adds_epu8(vDelta, v);
+
+		// Clamp out between 0 and 255
+		out = _mm256_min_epu8(vMax, out);
+		out = _mm256_max_epu8(vMin, out);
+
+		// Store from AVX register out to hOutImg at offset i
+		_mm256_storeu_si256(reinterpret_cast<__m256i*>(hOutImg + i), out);
+	}
+
+	// Handle remaining bytes
+	for (; i < totalBytes; i++) {
+		int y = static_cast<int>(hImg[i]) + delta;
+		hOutImg[i] = static_cast<unsigned char>(std::clamp(y, 0, 255));
+	}
+}
+
 static void multithread_invert(const unsigned char* hImg, unsigned char* hOutImg, int width, int height, int channels) {
-	unsigned int numThreads = std::thread::hardware_concurrency();
+	unsigned int numThreads = 4;
 	std::vector<std::thread> threads(numThreads);
 
 	size_t totalBytes = width * height * channels;
@@ -85,11 +117,23 @@ static void multithread_invert(const unsigned char* hImg, unsigned char* hOutImg
 			});
 	}
 
-	for (auto& t : threads)
+	for (auto& t : threads) {
+		//auto start = std::chrono::high_resolution_clock::now();
 		t.join();
+		//auto end = std::chrono::high_resolution_clock::now();
+		//std::cout << "Thread ID: " << std::this_thread::get_id() << " | Join Time: " << std::chrono::duration<double, std::milli>(end - start).count() << "ms.\n";
+	}
+}
+
+static void multithread_brightness(const unsigned char* hImg, unsigned char* hOutImg, int width, int height, int channels, int delta) {
+	// TO:DO
 }
 
 static void multithread_avx2_invert(const unsigned char* hImg, unsigned char* hOutImg, int width, int height, int channels) {
+	// TO:DO
+}
+
+static void multithread_avx2_brightness(const unsigned char* hImg, unsigned char* hOutImg, int width, int height, int channels, int delta) {
 	// TO:DO
 }
 
@@ -97,11 +141,14 @@ int main(int argc, char** argv) {
 	// Display AVX2/AVX512 Support
 	avx_support();
 
-	// Define the image paths
+	// Define the input and output image paths (convert to c_str() later...)
 	std::string evening{ "resources/evening.jpg" };
 	std::string inverted_evening{ "resources/inverted_evening.jpg" };
+	std::string brightness_evening{ "resources/brightness_evening.jpg" };
+
 	std::string pexels{ "resources/pexelsChristianHeitz.jpg" };
 	std::string inverted_pexels{ "resources/inverted_pexelsChristianHeitz.jpg" };
+	std::string brightness_pexels{ "resources/brightness_pexelsChristianHeitz.jpg" };
 
 	// Define image variables/attributes
 	int width, height, channels;
@@ -115,30 +162,51 @@ int main(int argc, char** argv) {
 		return -1;
 	}
 	unsigned char* hOutImg = new unsigned char[width * height * channels];
+	unsigned char* hOutImgBrightness = new unsigned char[width * height * channels];
 
 	// Invert image and calculate time function with chrono
 	auto start = std::chrono::high_resolution_clock::now();
 	invert(hImg, hOutImg, width, height, channels);
 	auto end = std::chrono::high_resolution_clock::now();
-	std::cout << "Time taken (No SIMD, No Multithreading): " << std::chrono::duration<double, std::milli>(end - start).count() << "ms.\n";
-	stbi_write_jpg(inverted_pexels.c_str(), width, height, channels, hOutImg, 95);
+	std::cout << "Invert Time taken (No SIMD, No Multithreading): " << std::chrono::duration<double, std::milli>(end - start).count() << "ms.\n";
 
 	// Invert image (Multithreading) and calculate time function with chrono
 	start = std::chrono::high_resolution_clock::now();
 	multithread_invert(hImg, hOutImg, width, height, channels);
 	end = std::chrono::high_resolution_clock::now();
-	std::cout << "Time taken (No SIMD, Multithreading): " << std::chrono::duration<double, std::milli>(end - start).count() << "ms.\n";
-	stbi_write_jpg(inverted_pexels.c_str(), width, height, channels, hOutImg, 95);
+	std::cout << "Invert Time taken (No SIMD, Multithreading): " << std::chrono::duration<double, std::milli>(end - start).count() << "ms.\n";
 
 	// Invert image (AVX2) and calculate time function with chrono
 	start = std::chrono::high_resolution_clock::now();
 	avx2_invert(hImg, hOutImg, width, height, channels);
 	end = std::chrono::high_resolution_clock::now();
-	std::cout << "Time taken (SIMD, No Multithreading): " << std::chrono::duration<double, std::milli>(end - start).count() << "ms.\n";
+	std::cout << "Invert Time taken (SIMD, No Multithreading): " << std::chrono::duration<double, std::milli>(end - start).count() << "ms.\n";
+
+	// Adjust brightness of image and calculate time function with chrono
+	start = std::chrono::high_resolution_clock::now();
+	brightness(hImg, hOutImgBrightness, width, height, channels, 50);
+	end = std::chrono::high_resolution_clock::now();
+	std::cout << "Brightness Time taken (No SIMD, No Multithreading): " << std::chrono::duration<double, std::milli>(end - start).count() << "ms.\n";
+
+	// Adjust brightness of image (Multithreading) and calculate time function with chrono
+	//start = std::chrono::high_resolution_clock::now();
+	//multithread_brightness(hImg, hOutImgBrightness, width, height, channels, 50);
+	//end = std::chrono::high_resolution_clock::now();
+	//std::cout << "Brightness Time taken (No SIMD, Multithreading): " << std::chrono::duration<double, std::milli>(end - start).count() << "ms.\n";
+
+	// Adjust brightness of image (AVX2) and calculate time function with chrono
+	start = std::chrono::high_resolution_clock::now();
+	avx2_brightness(hImg, hOutImgBrightness, width, height, channels, 50);
+	end = std::chrono::high_resolution_clock::now();
+	std::cout << "Brightness Time taken (SIMD, No Multithreading): " << std::chrono::duration<double, std::milli>(end - start).count() << "ms.\n";
+
+	// Save the inverted, output image
 	stbi_write_jpg(inverted_pexels.c_str(), width, height, channels, hOutImg, 95);
+	stbi_write_jpg(brightness_pexels.c_str(), width, height, channels, hOutImgBrightness, 95);
 
 	// Deallocate Memory
 	delete[] hOutImg;
+	delete[] hOutImgBrightness;
 	stbi_image_free(hImg);
 
 	// Terminate successfully
