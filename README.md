@@ -1,2 +1,2 @@
 # InvertImage
-<img width="1734" height="927" alt="image" src="https://github.com/user-attachments/assets/5360f3e6-920f-4195-b46b-0c63e0053e9a" />
+<img width="1734" height="927" alt="Screenshot 2026-01-25 221356" src="https://github.com/user-attachments/assets/46d60701-75a4-4383-ae0d-fc248034b600" />
